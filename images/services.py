@@ -7,6 +7,8 @@ import aiohttp
 from aiohttp import FormData
 from fastapi import Request, UploadFile
 import aiofiles
+from io import BytesIO
+from PIL import Image, ImageDraw, ImageColor
 
 from settings.settings import (
     API_PUBLIC_KEY,
@@ -76,7 +78,7 @@ class ProcessImageService(BaseService):
         host = self.request.url.hostname
         port = self.request.url.port
         img_url = f"{STATIC_URL}/images"
-        address = f"{host}:{port}/{img_url}/{new_name}"
+        address = f"http://{host}:{port}/{img_url}/{new_name}"
 
         # Perform query
         query = (
@@ -102,6 +104,7 @@ class ProcessImageService(BaseService):
 
         # Process image using 3rd party API
         self.image_content = await img.read()
+        # TODO: Return error based on status from API
         response = await self._send_process_request()
         faces = response['data']['faces']
 
@@ -116,9 +119,60 @@ class ProcessImageService(BaseService):
 
 class PaintImageService(BaseService):
 
-    async def execute(self, id: str, color: Union[str, None] = None):
-        print(id, color)
-        return {'msg': 'Success!'}
+    async def _fetch_img_with_faces(self, img_id: int) -> Dict:
+        db = self.request.app.state.db
+        query = (
+            f"SELECT images.image, faces.rectangle, faces.landmark FROM images "
+            f"LEFT JOIN faces ON images.id = faces.image_id "
+            f"WHERE images.id = {img_id};"
+        )
+        result = await db.fetch(query)
+        return result
+
+    async def _fetch_img_content(self, img_url: str) -> Dict:
+        async with aiohttp.ClientSession() as session:
+            # Send async request
+            async with session.get(img_url) as response:
+                response_data = {
+                    'status': response.status,
+                    'data': await response.content.read(),
+                }
+                return response_data
+
+    async def _paint_faces(
+        self,
+        content: bytes,
+        faces: List[Dict],
+        color: Union[str, None] = None
+    ):
+        # Color
+        fill = None
+        if color is not None:
+            fill = ImageColor.getrgb(color)
+        # Drawing
+        img = Image.open(BytesIO(content))
+        new_img = ImageDraw.Draw(img)
+        for face in faces:
+            marks = json.loads(face["landmark"])
+            for point in marks:
+                xy = (int(marks[point]['x']), int(marks[point]['y']))
+                new_img.point(xy, fill=fill)
+
+        # Use buffer to return bytes of edited image
+        buff = BytesIO()
+        img.save(buff, format='JPEG')
+        return buff.getvalue()
+
+    async def execute(self, id: str, color: Union[str, None] = None) -> bytes:
+        # Fetch img with faces
+        result = await self._fetch_img_with_faces(id)
+        # Get image content
+        # TODO: Return error based on response status
+        img_content = await self._fetch_img_content(result[0]['image'])
+        raw_img = img_content.get('data')
+        # Open content with pillow and paint faces
+        edited_image: bytes = await self._paint_faces(raw_img, result, color)
+        return edited_image
 
 
 class ChangeImageService(BaseService):

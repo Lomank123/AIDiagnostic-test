@@ -1,6 +1,6 @@
 from typing import Union
 
-from fastapi import APIRouter, Request, UploadFile
+from fastapi import APIRouter, Request, UploadFile, Response
 
 from images.services import (
     ChangeImageService,
@@ -22,7 +22,8 @@ async def process(request: Request, img: UploadFile):
 @router.get('/{id}')
 async def paint(id: str, request: Request, color: Union[str, None] = None):
     service = PaintImageService(request)
-    return await service.execute(id, color)
+    processed_image = await service.execute(id, color)
+    return Response(content=processed_image, media_type="image/jpg")
 
 
 @router.put('/{id}')
