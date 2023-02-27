@@ -9,17 +9,13 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Static files
-STATIC_URL = "/static/"
-STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
-
-# Media files
-MEDIA_URL = "/media/"
-MEDIA_ROOT = os.path.join(BASE_DIR, "mediafiles")
-
+STATIC_URL = "static"
+STATIC_ROOT = os.path.join(BASE_DIR, "static")
 
 # 3rd party API
 API_SECRET = os.environ.get("API_SECRET", "secret")
 API_PUBLIC_KEY = os.environ.get("API_PUBLIC_KEY", "public")
+API_URL = os.environ.get("API_URL", "https://example.com/")
 
 
 # PostgreSQL
@@ -32,6 +28,7 @@ DB_CREDENTIALS = {
     "database": os.environ.get("DB_NAME", "db_name"),
 }
 
+# TODO: Remove if unused
 # Format: "postgresql://user:password@postgresserver/db"
 DB_URL = (
     f"postgresql://{DB_CREDENTIALS['user']}:{DB_CREDENTIALS['password']}"

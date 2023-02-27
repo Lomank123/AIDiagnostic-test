@@ -15,7 +15,8 @@ router = APIRouter()
 @router.post('')
 async def process(request: Request, img: UploadFile):
     service = ProcessImageService(request)
-    return await service.execute(img)
+    img_id = await service.execute(img)
+    return {"id": img_id}
 
 
 @router.get('/{id}')

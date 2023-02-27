@@ -7,6 +7,17 @@ IMAGES_TABLE_CREATE = (
     );
     """
 )
+IMAGE_FACES_TABLE_CREATE = (
+    """
+    CREATE TABLE IF NOT EXISTS faces(
+        id SERIAL PRIMARY KEY,
+        image_id INT NOT NULL,
+        landmark JSON NULL,
+        rectangle JSON NULL,
+        FOREIGN KEY (image_id) REFERENCES images(id)
+    );
+    """
+)
 
 # For testing purposes only
 TEST_INSERT = (
