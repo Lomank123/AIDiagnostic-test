@@ -3,21 +3,22 @@ from io import BytesIO
 from typing import Dict, List, Union
 
 import aiohttp
-from fastapi import Request, UploadFile
+from fastapi import HTTPException, Request, UploadFile
 from PIL import Image, ImageColor, ImageDraw
 
 from images.utils import (
     build_image_address,
     build_image_process_request_data,
     build_new_image_path,
+    build_old_image_path,
+    check_by_id,
     generate_new_filename,
     insert_faces_into_db,
-    save_image_to_file,
-    send_process_request,
     remove_image_faces_from_db,
     remove_image_file,
-    build_old_image_path,
     remove_image_from_db,
+    save_image_to_file,
+    send_process_request,
 )
 
 
@@ -30,8 +31,7 @@ class BaseService:
         raise NotImplementedError()
 
 
-# TODO: Rename to NewImageService or CreateImageService
-class ProcessImageService(BaseService):
+class CreateImageService(BaseService):
 
     async def _insert_image_into_db(
         self, old_filename: str, address: str
@@ -47,13 +47,18 @@ class ProcessImageService(BaseService):
     async def execute(self, img: UploadFile) -> int:
         """Process, insert/update and return id of inserted image."""
 
-        # TODO: Return error based on status from API
-
         # Process image using 3rd party API
         image_content = await img.read()
         request_data = build_image_process_request_data(image_content)
         response = await send_process_request(data=request_data)
-        faces = response['data']['faces']
+        status_code = int(response.get('status'))
+        data = response.get('data')
+
+        # Error during image processing
+        if status_code != 200:
+            raise HTTPException(status_code=status_code, detail=str(data))
+
+        faces = data.get('faces')
 
         # Path, filename and address
         new_filename = generate_new_filename(img.filename)
@@ -124,6 +129,11 @@ class PaintImageService(BaseService):
         return buff.getvalue()
 
     async def execute(self, id: str, color: Union[str, None] = None) -> bytes:
+        db = self.request.app.state.db
+        is_found = await check_by_id(db, 'images', id)
+        if not is_found:
+            raise HTTPException(status_code=404, detail='Image not found.')
+
         # Fetch img with faces
         result = await self._fetch_img_with_faces(id)
         # Get image content
@@ -151,14 +161,23 @@ class ChangeImageService(BaseService):
         Remove old faces and image file.
         """
 
-        # TODO: Return error based on status from API
-        # TODO: Also add id check (if object exists)
+        db = self.request.app.state.db
+        is_found = await check_by_id(db, 'images', img_id)
+        if not is_found:
+            raise HTTPException(status_code=404, detail='Image not found.')
 
         # Process image using 3rd party API
         image_content = await img.read()
         request_data = build_image_process_request_data(image_content)
         response = await send_process_request(data=request_data)
-        faces = response['data']['faces']
+        status_code = int(response.get('status'))
+        data = response.get('data')
+
+        # Error during image processing
+        if status_code != 200:
+            raise HTTPException(status_code=status_code, detail=str(data))
+
+        faces = data.get('faces')
 
         # Path, filename and address
         new_filename = generate_new_filename(img.filename)
@@ -168,7 +187,6 @@ class ChangeImageService(BaseService):
             port=self.request.url.port,
             new_filename=new_filename,
         )
-        db = self.request.app.state.db
 
         # Remove old image
         old_img_path = await build_old_image_path(db, img_id)
@@ -193,6 +211,10 @@ class RemoveImageService(BaseService):
     async def execute(self, img_id: str):
         # Remove old image file
         db = self.request.app.state.db
+        is_found = await check_by_id(db, 'images', img_id)
+        if not is_found:
+            raise HTTPException(status_code=404, detail='Image not found.')
+
         old_img_path = await build_old_image_path(db, img_id)
         await remove_image_file(old_img_path)
 

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Request, UploadFile, Response
 from images.services import (
     ChangeImageService,
     PaintImageService,
-    ProcessImageService,
+    CreateImageService,
     RemoveImageService,
 )
 
@@ -14,7 +14,7 @@ router = APIRouter()
 
 @router.post('')
 async def process(request: Request, img: UploadFile):
-    service = ProcessImageService(request)
+    service = CreateImageService(request)
     img_id = await service.execute(img)
     return {"id": img_id}
 

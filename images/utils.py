@@ -23,6 +23,16 @@ def build_new_image_path(new_filename: str) -> str:
     return os.path.abspath(f"{STATIC_ROOT}/images/{new_filename}")
 
 
+async def check_by_id(
+    connection: Connection, table_name: str, item_id: str,
+) -> bool:
+    """Return True if item with this id exists in given table."""
+    query = f"SELECT COUNT(*) FROM {table_name} WHERE id = {item_id}"
+    result = await connection.fetch(query)
+    count = result[0].get('count')
+    return count > 0
+
+
 async def send_process_request(data: FormData) -> Dict:
     async with aiohttp.ClientSession() as session:
         # Send async request
