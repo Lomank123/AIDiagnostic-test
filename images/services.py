@@ -1,21 +1,18 @@
-import os
 import json
-import secrets
+from io import BytesIO
 from typing import Dict, List, Union
 
 import aiohttp
-from aiohttp import FormData
 from fastapi import Request, UploadFile
-import aiofiles
-from io import BytesIO
-from PIL import Image, ImageDraw, ImageColor
+from PIL import Image, ImageColor, ImageDraw
 
-from settings.settings import (
-    API_PUBLIC_KEY,
-    API_SECRET,
-    API_URL,
-    STATIC_ROOT,
-    STATIC_URL,
+from images.utils import (
+    build_image_address,
+    build_image_process_request_data,
+    save_image_to_file,
+    send_process_request,
+    generate_new_filename,
+    build_new_image_path,
 )
 
 
@@ -28,66 +25,20 @@ class BaseService:
         raise NotImplementedError()
 
 
+# TODO: Rename to NewImageService or CreateImageService
 class ProcessImageService(BaseService):
 
-    def __init__(self, request):
-        super().__init__(request)
-        self.image_content = b""
-
-    async def _build_request_data(self) -> FormData:
-        formdata = FormData()
-        data = {
-            'api_key': API_PUBLIC_KEY,
-            'api_secret': API_SECRET,
-            'image_file': self.image_content,
-            'return_landmark': '1',
-        }
-        for key in data:
-            formdata.add_field(name=key, value=data[key])
-        return formdata
-
-    async def _send_process_request(self):
-        async with aiohttp.ClientSession() as session:
-            data = await self._build_request_data()
-            # Send async request
-            async with session.post(API_URL, data=data) as response:
-                response_data = {
-                    'status': response.status,
-                    'data': await response.json(),
-                }
-                return response_data
-
-    async def _save_image(self, filename: str) -> int:
-        """
-        Create new file in static dir,
-        write image content to it and insert static path into db.
-        """
-        temp = filename.split(".")
-        title = temp[0]
-        extension = temp[1]
-
-        # Generate new file name
-        # Example: path/to/static/images/qweqweqwe.jpg
-        new_name = f"{secrets.token_hex(10)}.{extension}"
-        new_path = os.path.abspath(f"{STATIC_ROOT}/images/{new_name}")
-        # Create new file and write image to it
-        async with aiofiles.open(new_path, "wb+") as new_file:
-            await new_file.write(self.image_content)
-
-        # Generate url
-        host = self.request.url.hostname
-        port = self.request.url.port
-        img_url = f"{STATIC_URL}/images"
-        address = f"http://{host}:{port}/{img_url}/{new_name}"
-
-        # Perform query
+    async def _insert_image_to_db(self, old_filename: str, address: str) -> str:
+        """Insert static path to image and old title into db."""
         query = (
             f"INSERT INTO images "
-            f"VALUES(DEFAULT, '{title}', '{address}') RETURNING id;"
+            f"VALUES(DEFAULT, '{old_filename}', '{address}') RETURNING id;"
         )
-        return await self.request.app.state.db.fetch(query)
+        result = await self.request.app.state.db.fetch(query)
+        return result[0].get('id')
 
-    async def _save_faces(self, faces: List[Dict], image_id: int):
+    # TODO: Move to utils as well
+    async def _insert_faces_to_db(self, faces: List[Dict], image_id: int):
         """Insert faces coordinates into db."""
         insert_data = [
             (
@@ -99,20 +50,33 @@ class ProcessImageService(BaseService):
         query = "INSERT INTO faces VALUES(DEFAULT, $1, $2, $3);"
         await self.request.app.state.db.executemany(query, insert_data)
 
-    async def execute(self, img: UploadFile) -> int:
-        """Process, insert and return id of inserted image."""
+    async def execute(self, img: UploadFile, update: bool = False) -> int:
+        """Process, insert/update and return id of inserted image."""
+
+        # TODO: Return error based on status from API
 
         # Process image using 3rd party API
-        self.image_content = await img.read()
-        # TODO: Return error based on status from API
-        response = await self._send_process_request()
+        image_content = await img.read()
+        request_data = build_image_process_request_data(image_content)
+        response = await send_process_request(data=request_data)
         faces = response['data']['faces']
+
+        # Path, filename and address
+        new_filename = generate_new_filename(img.filename)
+        new_path = build_new_image_path(new_filename)
+        address = build_image_address(
+            host=self.request.url.hostname,
+            port=self.request.url.port,
+            new_filename=new_filename,
+        )
+
+        # Create new image file in static dir
+        await save_image_to_file(new_path, image_content)
 
         # All queries are in the same transaction
         async with self.request.app.state.db.transaction():
-            saved_image = await self._save_image(filename=img.filename)
-            image_id = saved_image[0]['id']
-            await self._save_faces(faces, image_id)
+            image_id = await self._insert_image_to_db(img.filename, address)
+            await self._insert_faces_to_db(faces, image_id)
 
         return image_id
 
@@ -123,7 +87,7 @@ class PaintImageService(BaseService):
         db = self.request.app.state.db
         query = (
             f"SELECT images.image, faces.rectangle, faces.landmark FROM images "
-            f"LEFT JOIN faces ON images.id = faces.image_id "
+            f"JOIN faces ON images.id = faces.image_id "
             f"WHERE images.id = {img_id};"
         )
         result = await db.fetch(query)
@@ -177,7 +141,12 @@ class PaintImageService(BaseService):
 
 class ChangeImageService(BaseService):
 
-    async def execute(self, id: str):
+    async def execute(self, id: str, img: UploadFile):
+        # Within 1 transaction
+        # Remove old faces (select by image_id)
+        # Update row with id (fields: title, path)
+        # Insert new faces
+        # Remove old image file after all other operations
         print(id)
         return {'msg': 'Success!'}
 

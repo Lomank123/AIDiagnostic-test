@@ -27,9 +27,10 @@ async def paint(id: str, request: Request, color: Union[str, None] = None):
 
 
 @router.put('/{id}')
-async def change(id: str, request: Request):
+async def change(request: Request, id: str, img: UploadFile):
     service = ChangeImageService(request)
-    return await service.execute(id)
+    img_id = await service.execute(id, img)
+    return {"id": img_id}
 
 
 @router.delete('/{id}')
