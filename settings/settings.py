@@ -27,11 +27,3 @@ DB_CREDENTIALS = {
     "password": os.environ.get("DB_PASSWORD", "db_pass"),
     "database": os.environ.get("DB_NAME", "db_name"),
 }
-
-# TODO: Remove if unused
-# Format: "postgresql://user:password@postgresserver/db"
-DB_URL = (
-    f"postgresql://{DB_CREDENTIALS['user']}:{DB_CREDENTIALS['password']}"
-    f"@{DB_CREDENTIALS['host']}:{DB_CREDENTIALS['port']}"
-    f"/{DB_CREDENTIALS['database']}"
-)

@@ -18,11 +18,3 @@ IMAGE_FACES_TABLE_CREATE = (
     );
     """
 )
-
-# For testing purposes only
-TEST_INSERT = (
-    """
-    INSERT INTO images VALUES(1, NULL, 'path/to/img');
-    """
-)
-TEST_FETCH_ALL = "SELECT id, title, image FROM images;"

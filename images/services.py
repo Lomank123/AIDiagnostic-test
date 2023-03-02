@@ -137,7 +137,6 @@ class PaintImageService(BaseService):
         # Fetch img with faces
         result = await self._fetch_img_with_faces(id)
         # Get image content
-        # TODO: Return error based on response status
         img_content = await self._fetch_img_content(result[0]['image'])
         raw_img = img_content.get('data')
         # Open content with pillow and paint faces
