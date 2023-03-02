@@ -1,10 +1,13 @@
 import os
 import secrets
-from typing import Dict
+from typing import Dict, List
+import json
 
 import aiofiles
+from aiofiles.os import remove
 import aiohttp
 from aiohttp import FormData
+from asyncpg.connection import Connection
 
 from settings.settings import (
     API_PUBLIC_KEY,
@@ -30,6 +33,34 @@ async def save_image_to_file(new_path: str, image_content: bytes):
     """Create new file in static dir and write image content to it."""
     async with aiofiles.open(new_path, "wb+") as new_file:
         await new_file.write(image_content)
+
+
+async def insert_faces_into_db(
+    connection: Connection, faces: List[Dict], image_id: int,
+):
+    """Insert faces coordinates into db."""
+    insert_data = [
+        (
+            int(image_id),
+            json.dumps(face['landmark']),
+            json.dumps(face['face_rectangle']),
+        ) for face in faces
+    ]
+    query = "INSERT INTO faces VALUES(DEFAULT, $1, $2, $3);"
+    await connection.executemany(query, insert_data)
+
+
+async def remove_image_faces_from_db(connection: Connection, image_id: int):
+    """Delete faces by image_id from db."""
+    query = f"DELETE FROM faces WHERE image_id = {image_id};"
+    await connection.execute(query)
+
+
+async def remove_image_file(path: str):
+    try:
+        await remove(path)
+    except FileNotFoundError:
+        pass
 
 
 def generate_new_filename(old_filename: str) -> str:
