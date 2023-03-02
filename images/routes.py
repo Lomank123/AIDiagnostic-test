@@ -36,9 +36,5 @@ async def change(request: Request, id: str, img: UploadFile):
 @router.delete('/{id}')
 async def remove(id: str, request: Request):
     service = RemoveImageService(request)
-    return await service.execute(id)
-
-
-@router.get('/test')
-async def test(request: Request):
-    return {'message': 'Test method.'}
+    await service.execute(id)
+    return dict()

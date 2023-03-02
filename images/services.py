@@ -16,6 +16,8 @@ from images.utils import (
     send_process_request,
     remove_image_faces_from_db,
     remove_image_file,
+    build_old_image_path,
+    remove_image_from_db,
 )
 
 
@@ -143,13 +145,6 @@ class ChangeImageService(BaseService):
         )
         await self.request.app.state.db.execute(query)
 
-    async def _build_old_image_path(self, img_id: str) -> str:
-        query = f"SELECT image FROM images WHERE id = {img_id};"
-        result = await self.request.app.state.db.fetch(query)
-        static_path = result[0].get('image')
-        filename = static_path.split('/')[-1]
-        return build_new_image_path(filename)
-
     async def execute(self, img_id: str, img: UploadFile):
         """
         Update existing image item in db. Create new faces and image file.
@@ -173,13 +168,13 @@ class ChangeImageService(BaseService):
             port=self.request.url.port,
             new_filename=new_filename,
         )
+        db = self.request.app.state.db
 
         # Remove old image
-        old_img_path = await self._build_old_image_path(img_id)
+        old_img_path = await build_old_image_path(db, img_id)
         await remove_image_file(old_img_path)
 
         # All queries are in the same transaction
-        db = self.request.app.state.db
         async with db.transaction():
             await self._update_image(
                 title=img.filename, address=address, img_id=img_id)
@@ -195,6 +190,13 @@ class ChangeImageService(BaseService):
 
 class RemoveImageService(BaseService):
 
-    async def execute(self, id: str):
-        print(id)
-        return {'msg': 'Success!'}
+    async def execute(self, img_id: str):
+        # Remove old image file
+        db = self.request.app.state.db
+        old_img_path = await build_old_image_path(db, img_id)
+        await remove_image_file(old_img_path)
+
+        # Remove faces and image from db
+        async with db.transaction():
+            await remove_image_faces_from_db(db, img_id)
+            await remove_image_from_db(db, img_id)

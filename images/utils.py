@@ -18,6 +18,11 @@ from settings.settings import (
 )
 
 
+def build_new_image_path(new_filename: str) -> str:
+    # Example: path/to/static/images/qweqweqwe.jpg
+    return os.path.abspath(f"{STATIC_ROOT}/images/{new_filename}")
+
+
 async def send_process_request(data: FormData) -> Dict:
     async with aiohttp.ClientSession() as session:
         # Send async request
@@ -56,6 +61,20 @@ async def remove_image_faces_from_db(connection: Connection, image_id: int):
     await connection.execute(query)
 
 
+async def remove_image_from_db(connection: Connection, image_id: int):
+    """Delete image by id from db."""
+    query = f"DELETE FROM images WHERE id = {image_id};"
+    await connection.execute(query)
+
+
+async def build_old_image_path(connection: Connection, img_id: str) -> str:
+    query = f"SELECT image FROM images WHERE id = {img_id};"
+    result = await connection.fetch(query)
+    static_path = result[0].get('image')
+    filename = static_path.split('/')[-1]
+    return build_new_image_path(filename)
+
+
 async def remove_image_file(path: str):
     try:
         await remove(path)
@@ -66,11 +85,6 @@ async def remove_image_file(path: str):
 def generate_new_filename(old_filename: str) -> str:
     extension = old_filename.split(".")[1]
     return f"{secrets.token_hex(10)}.{extension}"
-
-
-def build_new_image_path(new_filename: str) -> str:
-    # Example: path/to/static/images/qweqweqwe.jpg
-    return os.path.abspath(f"{STATIC_ROOT}/images/{new_filename}")
 
 
 def build_image_address(host: str, port: str, new_filename: str) -> str:
